@@ -1,0 +1,79 @@
+version: "2"
+
+services:
+  gitea-web:
+    image: gitea/gitea:latest
+    container_name: gitea-web
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - ROOT_URL=http://git.master.local:3000
+      - SSH_DOMAIN=git.master.local
+    restart: always
+    volumes:
+      - ./volumes/gitea_web:/data
+    ports:
+      - "3000:3000"
+      - "2222:22"
+    networks:
+      - cicdnet
+
+  gitea-db:
+    image: postgres:alpine
+    container_name: gitea-db
+    ports:
+      - 5440:5432
+    restart: always
+    volumes:
+      - ./volumes/gitea_db:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=gitea
+    networks:
+      - cicdnet
+
+  drone-server:
+    image: drone/drone:0.8
+    container_name: drone-server
+    ports:
+      - 8000:8000
+      - 9000:9000
+    volumes:
+      - ./volumes/drone:/var/lib/drone/
+    restart: always
+    depends_on:
+      - gitea-web
+    environment:
+      - DRONE_OPEN=true
+      - DRONE_HOST=http://drone-server:8000
+      - DRONE_GITEA=true
+      - DRONE_GITEA_URL=http://git.master.local:3000
+      - DRONE_SECRET=secret
+      - DRONE_NETWORK=cicdnet
+    networks:
+      - cicdnet
+
+  drone-agent:
+    image: drone/agent:0.8
+    container_name: drone-agent
+    command: agent
+    restart: always
+    depends_on:
+      - drone-server
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DRONE_SERVER=drone-server:9000
+      - DRONE_SECRET=secret
+    networks:
+      - cicdnet
+
+volumes:
+  gitea-web:
+  gitea-db:
+
+networks:
+  cicdnet:
+    external: true
+    name: cicdnet
